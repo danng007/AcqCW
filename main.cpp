@@ -80,6 +80,7 @@ int main(int argc, char *argv[]) {
 
     // Load a mesh in OFF format
     std::string meshPath = "../3rdparty/libigl/tutorial/shared/bunny.off";
+	std::string newMesh = "../3rdparty/libigl/tutorial/shared/camelhead.off";
     if (argc > 1) {
         meshPath = std::string(argv[1]);
         if (meshPath.find(".off") == std::string::npos) {
@@ -103,42 +104,64 @@ int main(int argc, char *argv[]) {
     {
         // Pointcloud vertices, N rows x 3 columns.
         Eigen::MatrixXd V;
+		Eigen::MatrixXd newV;
+		
         // Face indices, M x 3 integers referring to V.
         Eigen::MatrixXi F;
+		Eigen::MatrixXi newF;
         // Read mesh
         igl::readOFF(meshPath, V, F);
-        // Check, if any vertices read
-        if (V.rows() <= 0) {
-            std::cerr << "Could not read mesh at " << meshPath
-                      << "...exiting...\n";
-            return EXIT_FAILURE;
-        } //...if vertices read
+		if (V.rows() <= 0) {
+			std::cerr << "Could not read mesh at " << meshPath
+				<< "...exiting...\n";
+			return EXIT_FAILURE;
+		} //...if vertices read
+
+		igl::readOFF(newMesh, newV, newF);
+
+		Eigen::MatrixXd totalV(V.rows() + newV.rows(), V.cols());
+		totalV << V, newV;
+		Eigen::MatrixXi totalF(F.rows() + newF.rows(), F.cols());
+		totalF << F, (newF.array() + V.rows());
+
+		//set different colors to two objects
+		Eigen::MatrixXd C(totalF.rows(), 3);
+		C <<
+			Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F.rows(), 1),
+			Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(newF.rows(), 1);
 
         // Store read vertices and faces
         cloudManager.addCloud(acq::DecoratedCloud(V, F));
-
+		
         // Show mesh
-        viewer.data.set_mesh(
-            cloudManager.getCloud(0).getVertices(),
-            cloudManager.getCloud(0).getFaces()
+		viewer.data.set_mesh(
+			totalV,
+            totalF
         );
+		
+		viewer.data.set_colors(C);
+		// Calculate normals on launch
+		cloudManager.getCloud(0).setNormals(
+			acq::recalcNormals(
+				/* [in]      K-neighbours for FLANN: */ kNeighbours,
+				/* [in]             Vertices matrix: */ cloudManager.getCloud(0).getVertices(),
+				/* [in]      max neighbour distance: */ maxNeighbourDist
+			)
+		);
 
-        // Calculate normals on launch
-        cloudManager.getCloud(0).setNormals(
-            acq::recalcNormals(
-                /* [in]      K-neighbours for FLANN: */ kNeighbours,
-                /* [in]             Vertices matrix: */ cloudManager.getCloud(0).getVertices(),
-                /* [in]      max neighbour distance: */ maxNeighbourDist
-            )
-        );
+		// Update viewer
+		acq::setViewerNormals(
+			viewer,
+			cloudManager.getCloud(0).getVertices(),
+			cloudManager.getCloud(0).getNormals()
+		);
+		
+		
+		
 
-        // Update viewer
-        acq::setViewerNormals(
-            viewer,
-            cloudManager.getCloud(0).getVertices(),
-            cloudManager.getCloud(0).getNormals()
-        );
     } //...read mesh
+
+	
 
     // Extend viewer menu using a lambda function
     viewer.callback_init =
