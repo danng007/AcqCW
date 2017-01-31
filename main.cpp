@@ -77,7 +77,19 @@ int main(int argc, char *argv[]) {
     bool boolVariable = true;
     // Dummy variable to demo GUI
     float floatVariable = 0.1f;
+	/*Eigen::Matrix<float, 3, 1> T = Eigen::Matrix<float, 3, 1>::Identity();
+	T(0, 0) = 10.0f;
+	T(1, 0) = 1.0f;
+	T(2, 0) = 0.0f;*/
+	//Eigen::Affine3f transform(Eigen::Translation3f(10, 2, 3));
+	//Eigen::Matrix4f T = transform.matrix();
 
+	/*std::vector<float> T(3, 1);
+	T = { 10.0f, 5.0f, 0.0f };*/
+	Eigen::Vector3d T;
+	T << 0.1f, 0.0f, 0.0f;
+	Eigen::Matrix3d R;
+	R << 0, 0, 1, 0, 1, 0, -1, 0, 0;
     // Load a mesh in OFF format
     std::string meshPath = "../3rdparty/libigl/tutorial/shared/bunny.off";
 	std::string newMesh = "../3rdparty/libigl/tutorial/shared/camelhead.off";
@@ -103,26 +115,29 @@ int main(int argc, char *argv[]) {
     // Read mesh from meshPath
     {
         // Pointcloud vertices, N rows x 3 columns.
-        Eigen::MatrixXd V;
+        Eigen::MatrixXd V1;
 		Eigen::MatrixXd newV;
 		
         // Face indices, M x 3 integers referring to V.
         Eigen::MatrixXi F;
 		Eigen::MatrixXi newF;
         // Read mesh
-        igl::readOFF(meshPath, V, F);
-		if (V.rows() <= 0) {
+        igl::readOFF(meshPath, V1, F);
+		if (V1.rows() <= 0) {
 			std::cerr << "Could not read mesh at " << meshPath
 				<< "...exiting...\n";
 			return EXIT_FAILURE;
 		} //...if vertices read
+		newF = F;
+		int Vrows =  V1.rows() ;
+		
+		newV = (V1 + T.replicate<1, 3485>().transpose())*R;
+		//igl::readOFF(newMesh, newV, newF);
 
-		igl::readOFF(newMesh, newV, newF);
-
-		Eigen::MatrixXd totalV(V.rows() + newV.rows(), V.cols());
-		totalV << V, newV;
+		Eigen::MatrixXd totalV(V1.rows() + newV.rows(), V1.cols());
+		totalV << V1, newV;
 		Eigen::MatrixXi totalF(F.rows() + newF.rows(), F.cols());
-		totalF << F, (newF.array() + V.rows());
+		totalF << F, (newF.array() + V1.rows());
 
 		//set different colors to two objects
 		Eigen::MatrixXd C(totalF.rows(), 3);
@@ -131,7 +146,7 @@ int main(int argc, char *argv[]) {
 			Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(newF.rows(), 1);
 
         // Store read vertices and faces
-        cloudManager.addCloud(acq::DecoratedCloud(V, F));
+        cloudManager.addCloud(acq::DecoratedCloud(V1, F));
 		
         // Show mesh
 		viewer.data.set_mesh(
