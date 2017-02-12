@@ -9,7 +9,7 @@
 #include "igl/viewer/Viewer.h"
 
 #include <iostream>
-
+using namespace std;
 namespace acq {
 
 /** \brief                      Re-estimate normals of cloud \p V fitting planes
@@ -86,10 +86,13 @@ int main(int argc, char *argv[]) {
 
 	/*std::vector<float> T(3, 1);
 	T = { 10.0f, 5.0f, 0.0f };*/
-	Eigen::Vector3d T;
-	T << 0.1f, 0.0f, 0.0f;
+//    Eigen::Affine3f transform(Eigen::Translation3f(0.1f,0.0f,0.3f));
+
+//	Eigen::Vector3d T;
+//	T << 0.1f, 0.0f, 0.0f;
 	Eigen::Matrix3d R;
-	R << 0, 0, 1, 0, 1, 0, -1, 0, 0;
+//	R << 0, 0, 1, 0, 1, 0, -1, 0, 0;
+//    R << 0, 0, 1, 0, 1, 0, 1, 0, 0;
     // Load a mesh in OFF format
     std::string meshPath = "../3rdparty/libigl/tutorial/shared/bunny.off";
 	std::string newMesh = "../3rdparty/libigl/tutorial/shared/camelhead.off";
@@ -116,7 +119,7 @@ int main(int argc, char *argv[]) {
     {
         // Pointcloud vertices, N rows x 3 columns.
         Eigen::MatrixXd V1;
-		Eigen::MatrixXd newV;
+		Eigen::MatrixXd V2;
 		
         // Face indices, M x 3 integers referring to V.
         Eigen::MatrixXi F;
@@ -128,14 +131,41 @@ int main(int argc, char *argv[]) {
 				<< "...exiting...\n";
 			return EXIT_FAILURE;
 		} //...if vertices read
-		newF = F;
-		int Vrows =  V1.rows() ;
+        //----------------Point Processing-----------//
+                Eigen::Matrix3d rotation_matrix = Eigen::Matrix3d::Identity();
+        // 旋转向量使用 AngleAxis, 它底层不直接是Matrix，但运算可以当作矩阵（因为重载了运算符）
+        Eigen::AngleAxisd rotation_vector ( M_PI/4, Eigen::Vector3d ( 0,0,1 ) );     //沿 Z 轴旋转 45 度
+        
+        rotation_matrix = rotation_vector.toRotationMatrix();
+        Eigen::Isometry3d T=Eigen::Isometry3d::Identity();                // 虽然称为3d，实质上是4＊4的矩阵
+        T.rotate ( rotation_vector );                                     // 按照rotation_vector进行旋转
+        T.pretranslate ( Eigen::Vector3d ( 0.1f,0.0,0.2f ) );                     // 把平移向量设成(1,3,4)
+        cout << "Transform matrix = \n" << T.matrix() <<endl;
+        
+        float v1XMean =V1.col(0).mean();
+        float v1YMean =V1.col(1).mean();
+        float v1ZMean =V1.col(2).mean();
+        
+        cout<<"Mean of V1 col0 is: "<<v1XMean<<endl;
+        cout<<"Mean of V1 col1 is: "<<v1YMean<<endl;
+        cout<<"Mean of V1 col2 is: "<<v1ZMean<<endl;
+//        V2 = (V1 + T.replicate<1, 3485>().transpose());
+        V2 = T*V1;
+        float v2XMean =V2.col(0).mean();
+        float v2YMean =V2.col(1).mean();
+        float v2ZMean =V2.col(2).mean();
+        cout<<"Mean of V1 col0 is: "<<v2XMean<<endl;
+        cout<<"Mean of V1 col1 is: "<<v2YMean<<endl;
+        cout<<"Mean of V1 col2 is: "<<v2ZMean<<endl;
+        //----------------Point Processing-----------//
+        newF = F;
 		
-		newV = (V1 + T.replicate<1, 3485>().transpose())*R;
-		//igl::readOFF(newMesh, newV, newF);
+//		V2 = (V1 + T.replicate<1, 3485>().transpose())*R;
+		
+        //igl::readOFF(newMesh, newV, newF);
 
-		Eigen::MatrixXd totalV(V1.rows() + newV.rows(), V1.cols());
-		totalV << V1, newV;
+		Eigen::MatrixXd totalV(V1.rows() + V2.rows(), V1.cols());
+		totalV << V1, V2;
 		Eigen::MatrixXi totalF(F.rows() + newF.rows(), F.cols());
 		totalF << F, (newF.array() + V1.rows());
 
