@@ -102,6 +102,97 @@ calculateCloudNeighbours(
     return neighbours;
 } //...calculateCloudNormals()
 
+
+NeighboursT
+calculateCloudNeighbours(
+	CloudT  const& cloud,
+	CloudT  const& cloud2,
+	int     const  k,
+	float   const  maxDist,
+	int     const  maxLeafs
+) {
+	// Floating point type
+	typedef typename CloudT::Scalar Scalar;
+	// Point dimensions
+	enum { Dim = 3 };
+	// Copy-free Eigen->FLANN wrapper
+	typedef nanoflann::KDTreeEigenMatrixAdaptor <
+		/*    Eigen matrix type: */ CloudT,
+		/* Space dimensionality: */ Dim,
+		/*      Distance metric: */ nanoflann::metric_L2
+	> KdTreeWrapperT;
+
+	// Squared max distance
+	float const maxDistSqr = maxDist * maxDist;
+
+	// Safety check dimensionality
+	if (cloud.cols() != Dim) {
+		std::cerr << "Point dimension mismatch: " << cloud.cols()
+			<< " vs. " << Dim
+			<< "\n";
+		throw new std::runtime_error("Point dimension mismatch");
+	} //...check dimensionality
+
+	  // Build KdTree
+	KdTreeWrapperT cloudIndex(Dim, cloud, maxLeafs);
+	cloudIndex.index->buildIndex();
+
+	// Neighbour indices
+	std::vector<size_t> neighbourIndices(k);
+	std::vector<Scalar> distsSqr(k);
+
+	// Placeholder structure for nanoFLANN
+	nanoflann::KNNResultSet <Scalar> resultSet(k);
+
+	// Associative list of neighbours: { pointId => [neighbourId_0, nId_1, ... nId_k-1] }
+	NeighboursT neighbours;
+	// For each point, store normal
+	for (int pointId = 0; pointId != cloud2.rows(); ++pointId) {
+		// Initialize nearest neighhbour estimation
+		resultSet.init(&neighbourIndices[0], &distsSqr[0]);
+
+		// Make sure it's ok to expose raw data pointer of point
+		static_assert(
+			std::is_same<Scalar, double>::value,
+			"Double input assumed next. Otherwise, explicit copy is needed!"
+			);
+
+		// Find neighbours of point in "pointId"-th row
+		cloudIndex.index->findNeighbors(
+			/*                Output wrapper: */ resultSet,
+			/* Query point double[3] pointer: */ cloud2.row(pointId).data(),
+			/*    How many neighbours to use: */ nanoflann::SearchParams(k)
+		);
+
+		// Filter neighbours by squared distance
+		NeighboursT::mapped_type currNeighbours;
+		for (int i = 0; i != neighbourIndices.size(); ++i) {
+			// if not same point and close enough
+			if ((neighbourIndices[i] != pointId) &&
+				(distsSqr[i] <  maxDistSqr))
+				currNeighbours.insert(neighbourIndices[i]);
+		}
+
+		// Store list of neighbours
+		std::pair<NeighboursT::iterator, bool> const success =
+			neighbours.insert(
+				std::make_pair(
+					pointId,
+					currNeighbours
+				)
+			);
+
+		if (!success.second)
+			std::cerr << "Could not store neighbours of point " << pointId
+			<< ", already inserted?\n";
+
+	} //...for all points
+
+	  // return estimated normals
+	return neighbours;
+} //...calculateCloudNormals()
+
+
 NormalsT
 calculateCloudNormals(
     CloudT      const& cloud,

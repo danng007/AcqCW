@@ -88,10 +88,10 @@ int main(int argc, char *argv[]) {
 	T = { 10.0f, 5.0f, 0.0f };*/
 //    Eigen::Affine3f transform(Eigen::Translation3f(0.1f,0.0f,0.3f));
 
-//	Eigen::Vector3d T;
-//	T << 0.1f, 0.0f, 0.0f;
+	Eigen::Vector3d T;
+	T << 0.1f, 0.0f, 0.0f;
 	Eigen::Matrix3d R;
-//	R << 0, 0, 1, 0, 1, 0, -1, 0, 0;
+	R << 0, 0, 1, 0, 1, 0, 1, 0, 0;
 //    R << 0, 0, 1, 0, 1, 0, 1, 0, 0;
     // Load a mesh in OFF format
     std::string meshPath = "../3rdparty/libigl/tutorial/shared/bunny.off";
@@ -132,32 +132,102 @@ int main(int argc, char *argv[]) {
 			return EXIT_FAILURE;
 		} //...if vertices read
         //----------------Point Processing-----------//
-                Eigen::Matrix3d rotation_matrix = Eigen::Matrix3d::Identity();
-        // 旋转向量使用 AngleAxis, 它底层不直接是Matrix，但运算可以当作矩阵（因为重载了运算符）
-        Eigen::AngleAxisd rotation_vector ( M_PI/4, Eigen::Vector3d ( 0,0,1 ) );     //沿 Z 轴旋转 45 度
-        
-        rotation_matrix = rotation_vector.toRotationMatrix();
-        Eigen::Isometry3d T=Eigen::Isometry3d::Identity();                // 虽然称为3d，实质上是4＊4的矩阵
-        T.rotate ( rotation_vector );                                     // 按照rotation_vector进行旋转
-        T.pretranslate ( Eigen::Vector3d ( 0.1f,0.0,0.2f ) );                     // 把平移向量设成(1,3,4)
-        cout << "Transform matrix = \n" << T.matrix() <<endl;
+        //        Eigen::Matrix3d rotation_matrix = Eigen::Matrix3d::Identity();
+        //// 旋转向量使用 AngleAxis, 它底层不直接是Matrix，但运算可以当作矩阵（因为重载了运算符）
+        //Eigen::AngleAxisd rotation_vector ( M_PI/4, Eigen::Vector3d ( 0,0,1 ) );     //沿 Z 轴旋转 45 度
+        //
+        //rotation_matrix = rotation_vector.toRotationMatrix();
+        //Eigen::Isometry3d T=Eigen::Isometry3d::Identity();                // 虽然称为3d，实质上是4＊4的矩阵
+        //T.rotate ( rotation_vector );                                     // 按照rotation_vector进行旋转
+        //T.pretranslate ( Eigen::Vector3d ( 0.1f,0.0,0.2f ) );                     // 把平移向量设成(1,3,4)
+        //cout << "Transform matrix = \n" << T.matrix() <<endl;
         
         float v1XMean =V1.col(0).mean();
         float v1YMean =V1.col(1).mean();
         float v1ZMean =V1.col(2).mean();
         
-        cout<<"Mean of V1 col0 is: "<<v1XMean<<endl;
-        cout<<"Mean of V1 col1 is: "<<v1YMean<<endl;
-        cout<<"Mean of V1 col2 is: "<<v1ZMean<<endl;
-//        V2 = (V1 + T.replicate<1, 3485>().transpose());
-        V2 = T*V1;
+        cout<<"oldMean of V1 X col0 is: "<<v1XMean<<endl;
+        cout<<"oldMean of V1 Y col1 is: "<<v1YMean<<endl;
+        cout<<"oldMean of V1 Z col2 is: "<<v1ZMean<<endl;
+		cout << endl;
+        V2 = (V1 + T.replicate<1, 3485>().transpose());
+        //V2 = T*V1;
         float v2XMean =V2.col(0).mean();
         float v2YMean =V2.col(1).mean();
         float v2ZMean =V2.col(2).mean();
-        cout<<"Mean of V1 col0 is: "<<v2XMean<<endl;
-        cout<<"Mean of V1 col1 is: "<<v2YMean<<endl;
-        cout<<"Mean of V1 col2 is: "<<v2ZMean<<endl;
+        cout<<"oldMean of V2 X col0 is: "<<v2XMean<<endl;
+        cout<<"oldMean of V2 Y col1 is: "<<v2YMean<<endl;
+        cout<<"oldMean of V2 Z col2 is: "<<v2ZMean<<endl;
+		cout << endl;
+		Eigen::Vector3d v1Mean;
+		v1Mean << v1XMean, v1YMean, v1ZMean;
+		Eigen::Vector3d v2Mean;
+		v2Mean << v2XMean, v2YMean, v2ZMean;
+		Eigen::MatrixXd newV1;
+		Eigen::MatrixXd newV2;
+		newV1 = V1 - v1Mean.replicate<1, 3485>().transpose();
+		newV2 = V2 - v2Mean.replicate<1, 3485>().transpose();
+		
+		cloudManager.addCloud(acq::DecoratedCloud(newV1, F));
+		cloudManager.addCloud(acq::DecoratedCloud(newV2, F));
+		acq::NeighboursT const SVDneighbours =
+			acq::calculateCloudNeighbours(
+				/* [in] Source Cloud: */ cloudManager.getCloud(0).getVertices(),
+				/* [in] Target Cloud: */ cloudManager.getCloud(1).getVertices(),
+				/* [in] k-neighbours: */ 1,
+				/* [in]      maxDist: */ maxNeighbourDist
+			);
+		cout<<"Neighbours size: "<<SVDneighbours.size()<<endl;
+		Eigen::MatrixXd V3; //neighbour Vs
+		
+		V3.setZero(SVDneighbours.size(),3);
+		for (int i = 0; i < SVDneighbours.size(); i++)
+		{
+			std::set<size_t> neighbours = SVDneighbours.at(i);
+			std::set<size_t>::iterator eachN;
+			for (eachN = neighbours.begin(); eachN != neighbours.end(); eachN++) {
+				//cout <<"Number of Point: "<<i <<" "<<V1.row(*eachN) <<endl;
+				V3.row(i) = newV1.row(*eachN);
+			}
+		}
+
+		cout << "Mean of V1 X col0 is: " << newV1.col(0).mean() << endl;
+		cout << "Mean of V1 Y col1 is: " << newV1.col(1).mean() << endl;
+		cout << "Mean of V1 Z col2 is: " << newV1.col(2).mean() << endl;
+		cout <<endl;
+		float v3XMean = V3.col(0).mean();
+		float v3YMean = V3.col(1).mean();
+		float v3ZMean = V3.col(2).mean();
+		Eigen::Vector3d v3Mean;
+		v3Mean << v3XMean, v3YMean, v3ZMean;
+		cout << "Mean of V3 X col0 is: " << v3XMean << endl;
+		cout << "Mean of V3 Y col1 is: " << v3YMean << endl;
+		cout << "Mean of V3 Z col2 is: " << v3ZMean << endl;
+		cout << endl;
+		float newv2XMean = newV2.col(0).mean();
+		float newv2YMean = newV2.col(1).mean();
+		float newv2ZMean = newV2.col(2).mean();
+		cout << "Mean of V2 X col0 is: " << newv2XMean << endl;
+		cout << "Mean of V2 Y col1 is: " << newv2YMean << endl;
+		cout << "Mean of V2 Z col2 is: " << newv2ZMean << endl;
+		cout << endl;
+		Eigen::Vector3d newv2Mean;
+		newv2Mean << newv2XMean, newv2YMean, newv2ZMean;
+
+		Eigen::MatrixXd SVDC;
+		SVDC = ((newV2 - newv2Mean.replicate<1, 3485>().transpose()).transpose())*(V3 - v3Mean.replicate<1, 3485>().transpose());
+		cout << "The SVDC is"<<endl << SVDC << endl;
+		Eigen::JacobiSVD<Eigen::MatrixXd> svd(SVDC, Eigen::ComputeThinU | Eigen::ComputeThinV);
+		Eigen::MatrixXd SVDU = svd.matrixU();
+		Eigen::MatrixXd SVDV = svd.matrixV();
+		Eigen::MatrixXd SVDR = SVDV*SVDU.transpose();
+		Eigen::MatrixXd SVDT = v3Mean - SVDR*newv2Mean;
+		cout << "The SVDR is" << endl << SVDR << endl;
+		cout << "The SVDT is" << endl << SVDT << endl;
+		//V2 = (V2 - SVDT.replicate<1, 3485>().transpose())*SVDR;
+
         //----------------Point Processing-----------//
+		//----------------Show Two Meshes-----------//
         newF = F;
 		
 //		V2 = (V1 + T.replicate<1, 3485>().transpose())*R;
