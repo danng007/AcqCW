@@ -263,10 +263,10 @@ orientCloudNormals(
             // Fetch neighbours
             NeighboursT::const_iterator const iter = neighbours.find(pointId);
             // Check, if any neighbours
-            if (iter == neighbours.end()) {
-                //std::cerr << "Could not find neighbours of point " << pointId << "\n";
-                continue;
-            }
+//            if (iter == neighbours.end()) {
+//                //std::cerr << "Could not find neighbours of point " << pointId << "\n";
+//                continue;
+//            }
 
             for (int const neighbourId : iter->second) {
                 // If unvisited

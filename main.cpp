@@ -7,8 +7,9 @@
 
 #include "igl/readOFF.h"
 #include "igl/viewer/Viewer.h"
-
+#include <ANN/ANN.h>
 #include <iostream>
+#include "annNeighbour.h"
 using namespace std;
 namespace acq {
 
@@ -69,7 +70,7 @@ int main(int argc, char *argv[]) {
     // How many neighbours to use for normal estimation, shown on GUI.
     int kNeighbours = 10;
     // Maximum distance between vertices to be considered neighbours (FLANN mode)
-    float maxNeighbourDist = 0.15; //TODO: set to average vertex distance upon read
+    float maxNeighbourDist = 20.0; //TODO: set to average vertex distance upon read
 
     // Dummy enum to demo GUI
     enum Orientation { Up=0, Down, Left, Right } dir = Up;
@@ -87,14 +88,14 @@ int main(int argc, char *argv[]) {
 	/*std::vector<float> T(3, 1);
 	T = { 10.0f, 5.0f, 0.0f };*/
 //    Eigen::Affine3f transform(Eigen::Translation3f(0.1f,0.0f,0.3f));
-
+       //
 	Eigen::Vector3d T;
 	T << 0.1f, 0.0f, 0.0f;
 	Eigen::Matrix3d R;
-	R << 0, 0, 1, 0, 1, 0, 1, 0, 0;
+	R << 0, 0, 1, 0, 1, 0, -1, 0, 0;
 //    R << 0, 0, 1, 0, 1, 0, 1, 0, 0;
     // Load a mesh in OFF format
-    std::string meshPath = "../3rdparty/libigl/tutorial/shared/bunny.off";
+    std::string meshPath = "../3rdparty/libigl/tutorial/shared/bunny2.off";
 	std::string newMesh = "../3rdparty/libigl/tutorial/shared/camelhead.off";
     if (argc > 1) {
         meshPath = std::string(argv[1]);
@@ -126,6 +127,7 @@ int main(int argc, char *argv[]) {
 		Eigen::MatrixXi newF;
         // Read mesh
         igl::readOFF(meshPath, V1, F);
+   
 		if (V1.rows() <= 0) {
 			std::cerr << "Could not read mesh at " << meshPath
 				<< "...exiting...\n";
@@ -141,7 +143,7 @@ int main(int argc, char *argv[]) {
         //T.rotate ( rotation_vector );                                     // 按照rotation_vector进行旋转
         //T.pretranslate ( Eigen::Vector3d ( 0.1f,0.0,0.2f ) );                     // 把平移向量设成(1,3,4)
         //cout << "Transform matrix = \n" << T.matrix() <<endl;
-        
+            
         float v1XMean =V1.col(0).mean();
         float v1YMean =V1.col(1).mean();
         float v1ZMean =V1.col(2).mean();
@@ -150,7 +152,8 @@ int main(int argc, char *argv[]) {
         cout<<"oldMean of V1 Y col1 is: "<<v1YMean<<endl;
         cout<<"oldMean of V1 Z col2 is: "<<v1ZMean<<endl;
 		cout << endl;
-        V2 = (V1 + T.replicate<1, 3485>().transpose());
+        V2 = (V1 + T.replicate<1, 8>().transpose());
+     
         //V2 = T*V1;
         float v2XMean =V2.col(0).mean();
         float v2YMean =V2.col(1).mean();
@@ -165,12 +168,43 @@ int main(int argc, char *argv[]) {
 		v2Mean << v2XMean, v2YMean, v2ZMean;
 		Eigen::MatrixXd newV1;
 		Eigen::MatrixXd newV2;
-		newV1 = V1 - v1Mean.replicate<1, 3485>().transpose();
-		newV2 = V2 - v2Mean.replicate<1, 3485>().transpose();
+		newV1 = V1 - v1Mean.replicate<1, 8>().transpose();
+		newV2 = V2 - v2Mean.replicate<1, 8>().transpose();
 		
-		cloudManager.addCloud(acq::DecoratedCloud(newV1, F));
-		cloudManager.addCloud(acq::DecoratedCloud(newV2, F));
-		acq::NeighboursT const SVDneighbours =
+		cloudManager.addCloud(acq::DecoratedCloud(V1, F));
+		cloudManager.addCloud(acq::DecoratedCloud(V2, F));
+		//Test find neighbour
+
+//ANN TEST
+        annNeighbour * ann = new annNeighbour();
+//        ann->calculateCloudNeighbours(cloudManager.getCloud(0).getVertices(),cloudManager.getCloud(1).getVertices(),1, V1.rows());
+        
+        
+        
+        
+        
+        
+        
+//ANN TEST
+        acq::NeighboursT const Testneighbour =
+        acq::calculateCloudNeighbours(
+                                      /* [in] Source Cloud: */ cloudManager.getCloud(0).getVertices(),
+                                      /* [in] k-neighbours: */ 1,
+                                      /* [in]      maxDist: */ maxNeighbourDist
+                                      );
+        
+        for (int i = 0; i < Testneighbour.size(); i++)
+        {
+            std::set<size_t> neighbours = Testneighbour.at(i);
+            std::set<size_t>::iterator eachN;
+            for (eachN = neighbours.begin(); eachN != neighbours.end(); eachN++) {
+                cout <<"Neighbour of Point: " <<*eachN<<endl;
+            }
+             cout <<"Value of Point: "<<i  <<endl;
+        }
+        //Test find neighbour
+        
+        acq::NeighboursT const SVDneighbours =
 			acq::calculateCloudNeighbours(
 				/* [in] Source Cloud: */ cloudManager.getCloud(0).getVertices(),
 				/* [in] Target Cloud: */ cloudManager.getCloud(1).getVertices(),
@@ -179,15 +213,19 @@ int main(int argc, char *argv[]) {
 			);
 		cout<<"Neighbours size: "<<SVDneighbours.size()<<endl;
 		Eigen::MatrixXd V3; //neighbour Vs
-		
 		V3.setZero(SVDneighbours.size(),3);
+        Eigen::MatrixXd SVDV2; //neighbour Vs
+        SVDV2.setZero(SVDneighbours.size(),3);
 		for (int i = 0; i < SVDneighbours.size(); i++)
 		{
 			std::set<size_t> neighbours = SVDneighbours.at(i);
 			std::set<size_t>::iterator eachN;
 			for (eachN = neighbours.begin(); eachN != neighbours.end(); eachN++) {
-				//cout <<"Number of Point: "<<i <<" "<<V1.row(*eachN) <<endl;
-				V3.row(i) = newV1.row(*eachN);
+				cout <<"Neighbour of Point: " <<" "<<V1.row(*eachN) <<endl;
+                cout <<"Value of Point: "<<i <<" "<<V2.row(i) <<endl;
+
+				V3.row(i) = V1.row(*eachN);
+                SVDV2.row(i) = V2.row(i);
 			}
 		}
 
@@ -204,24 +242,25 @@ int main(int argc, char *argv[]) {
 		cout << "Mean of V3 Y col1 is: " << v3YMean << endl;
 		cout << "Mean of V3 Z col2 is: " << v3ZMean << endl;
 		cout << endl;
-		float newv2XMean = newV2.col(0).mean();
-		float newv2YMean = newV2.col(1).mean();
-		float newv2ZMean = newV2.col(2).mean();
-		cout << "Mean of V2 X col0 is: " << newv2XMean << endl;
-		cout << "Mean of V2 Y col1 is: " << newv2YMean << endl;
-		cout << "Mean of V2 Z col2 is: " << newv2ZMean << endl;
+        
+		float svdv2XMean = SVDV2.col(0).mean();
+		float svdv2YMean = SVDV2.col(1).mean();
+		float svdv2ZMean = SVDV2.col(2).mean();
+		cout << "Mean of V2 X col0 is: " << svdv2XMean << endl;
+		cout << "Mean of V2 Y col1 is: " << svdv2YMean << endl;
+		cout << "Mean of V2 Z col2 is: " << svdv2ZMean << endl;
 		cout << endl;
-		Eigen::Vector3d newv2Mean;
-		newv2Mean << newv2XMean, newv2YMean, newv2ZMean;
+		Eigen::Vector3d svdv2Mean;
+		svdv2Mean << svdv2XMean, svdv2YMean, svdv2ZMean;
 
 		Eigen::MatrixXd SVDC;
-		SVDC = ((newV2 - newv2Mean.replicate<1, 3485>().transpose()).transpose())*(V3 - v3Mean.replicate<1, 3485>().transpose());
+		SVDC = ((SVDV2 - svdv2Mean.replicate<1, 8>().transpose()).transpose())*(V3 - v3Mean.replicate<1, 8>().transpose());
 		cout << "The SVDC is"<<endl << SVDC << endl;
 		Eigen::JacobiSVD<Eigen::MatrixXd> svd(SVDC, Eigen::ComputeThinU | Eigen::ComputeThinV);
 		Eigen::MatrixXd SVDU = svd.matrixU();
 		Eigen::MatrixXd SVDV = svd.matrixV();
 		Eigen::MatrixXd SVDR = SVDV*SVDU.transpose();
-		Eigen::MatrixXd SVDT = v3Mean - SVDR*newv2Mean;
+		Eigen::MatrixXd SVDT = v3Mean - SVDR*svdv2Mean;
 		cout << "The SVDR is" << endl << SVDR << endl;
 		cout << "The SVDT is" << endl << SVDT << endl;
 		//V2 = (V2 - SVDT.replicate<1, 3485>().transpose())*SVDR;
