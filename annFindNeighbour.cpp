@@ -100,4 +100,14 @@ Eigen::MatrixXd ann::annSVD(Eigen::MatrixXd V3, Eigen::MatrixXd V2,Eigen::Matrix
      return originalV2;
 }
 
+double ann::calDis(Eigen::MatrixXd V1, Eigen::MatrixXd V2, int minRows){
 
+    double dis = 0;
+    for(int i =0;i<minRows;i++){
+        
+        dis += sqrt((V1(i,0)-V2(i,0))*(V1(i,0)-V2(i,0))+(V1(i,1)-V2(i,1))*(V1(i,1)-V2(i,1))+(V1(i,2)-V2(i,2))*(V1(i,2)-V2(i,2)));
+        
+    }
+    return dis/V1.rows();
+    
+}

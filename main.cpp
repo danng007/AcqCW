@@ -428,6 +428,7 @@ int main(int argc, char *argv[]) {
                                    Eigen::MatrixXd V3;
                                    Eigen::MatrixXd newV2;
                                    int annKNeighbours = 1;
+                                   
                                    std::tie(V3,newV2)= ann::annNeighbour(V1,V2,annKNeighbours,minRows);
                                    //ANN TEST
                                    V2 = ann::annSVD(V3,newV2,V2);
@@ -465,7 +466,7 @@ int main(int argc, char *argv[]) {
                                    
                                }
                                );
-        viewer.ngui->addButton("Point to Plane (Normals)",
+        viewer.ngui->addButton("Point to Plane",
                                [&]() {
                                    acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
                                    acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
@@ -489,6 +490,70 @@ int main(int argc, char *argv[]) {
                                    std::cout << "Processing Time: " << timeLast << " s" << endl;
                                    std::cout << "*************************************" << endl;
                                    
+                                   cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
+                                   
+                                   Eigen::MatrixXd totalV(V1.rows() + V2.rows(), V1.cols());
+                                   totalV << V1, V2;
+                                   Eigen::MatrixXi totalF(F1.rows() + F2.rows(), F1.cols());
+                                   totalF << F1, (F2.array()+V1.rows());
+                                   //set different colors to two objects
+                                   Eigen::MatrixXd C(totalF.rows(), 3);
+                                   C <<
+                                   Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1);
+                                   
+                                   // Store read vertices and faces
+                                   cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
+                                   
+                                   // Show mesh
+                                   viewer.data.clear();
+                                   viewer.data.set_mesh(
+                                                        totalV,
+                                                        totalF
+                                                        );
+                                   
+                                   viewer.data.set_colors(C);
+                                   
+                                   
+                               }
+                               );
+        viewer.ngui->addButton("Iteration Point to Point",
+                               [&]() {
+                                   acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
+                                   acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
+                                   Eigen::MatrixXi F1 = cloud1.getFaces();
+                                   Eigen::MatrixXi F2 = cloud2.getFaces();
+                                   Eigen:: MatrixXd V1;
+                                   V1 = cloud1.getVertices();
+                                   Eigen:: MatrixXd V2;
+                                   V2 = cloud2.getVertices();
+                                   double timeBegin = std::clock();
+                                   double alignDis = 0.04;
+                                   //ANN TEST
+                                   int minRows = min(V1.rows(),V2.rows())*sampleRatio;
+                                   Eigen::MatrixXd V3;
+                                   Eigen::MatrixXd newV2;
+                                   int annKNeighbours = 1;
+                                   double currDis = 1.0;
+                                   int counter = 0;
+                                   while (true) {
+                                       std::tie(V3,newV2)= ann::annNeighbour(V1,V2,annKNeighbours,minRows);
+                                       //ANN TEST
+                                       V2 = ann::annSVD(V3,newV2,V2);
+                                       currDis = ann::calDis(V2, V1,minRows);
+                                       counter ++;
+                                       if  (currDis < alignDis || counter > 60)
+                                           break;
+                                       
+                                   }
+                                   cout<<"Steps of this Ite: "<<counter<<endl;
+                                   
+                                   double timeLast = (std::clock() - timeBegin)*1.0/CLOCKS_PER_SEC;
+                                   std::cout << "*************************************" << endl;
+                                   std::cout << "Processing Time: " << timeLast << " s" << endl;
+                                   std::cout << "*************************************" << endl;
+                                   cout<<V2.rows();
                                    cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
                                    cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
                                    
@@ -692,10 +757,7 @@ int main(int argc, char *argv[]) {
                                        tie(annV1,annV2)= ann::annNeighbour(V1,V2,1,minRows);
                                        //ANN TEST
                                        V2 = ann::annSVD(annV1,annV2,V2);
-                                       
-                                    
-                                       
-                                       
+                             
 
                                    }
                                    cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);

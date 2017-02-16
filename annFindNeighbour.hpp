@@ -13,4 +13,5 @@ using namespace std;
 namespace ann {
     tuple<Eigen::MatrixXd, Eigen::MatrixXd> annNeighbour(Eigen::MatrixXd V1, Eigen::MatrixXd V2, int annK, int pointsNumber);
     Eigen::MatrixXd annSVD(Eigen::MatrixXd V1, Eigen::MatrixXd V2,Eigen::MatrixXd originalV2);
+    double calDis(Eigen::MatrixXd V1, Eigen::MatrixXd V2,int minRow);
 }
