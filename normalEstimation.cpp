@@ -215,7 +215,7 @@ calculateCloudNormals(
     // Return estimated normals
     return normals;
 } //...calculateCloudNormals()
-
+  
 int
 orientCloudNormals(
     NeighboursT const& neighbours,

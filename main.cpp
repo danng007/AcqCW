@@ -9,7 +9,11 @@
 #include "igl/viewer/Viewer.h"
 #include <ANN/ANN.h>
 #include <iostream>
-#include "annNeighbour.h"
+#include "annFindNeighbour.hpp"
+#include "annWithNormal.hpp"
+#include <random>
+#include <iterator>
+//#include "annNeighbour.h"
 using namespace std;
 namespace acq {
 
@@ -66,37 +70,39 @@ void setViewerNormals(
 } //...ns acq
 
 int main(int argc, char *argv[]) {
-
+  
     // How many neighbours to use for normal estimation, shown on GUI.
+    acq::NormalsT cloud1N;
     int kNeighbours = 10;
     // Maximum distance between vertices to be considered neighbours (FLANN mode)
-    float maxNeighbourDist = 20.0; //TODO: set to average vertex distance upon read
+    float maxNeighbourDist = 0.15; //TODO: set to average vertex distance upon read
 
     // Dummy enum to demo GUI
     enum Orientation { Up=0, Down, Left, Right } dir = Up;
     // Dummy variable to demo GUI
     bool boolVariable = true;
     // Dummy variable to demo GUI
+    double disMean = 0.0;
+    double disDiv = 0.0;
     float floatVariable = 0.1f;
-	/*Eigen::Matrix<float, 3, 1> T = Eigen::Matrix<float, 3, 1>::Identity();
-	T(0, 0) = 10.0f;
-	T(1, 0) = 1.0f;
-	T(2, 0) = 0.0f;*/
-	//Eigen::Affine3f transform(Eigen::Translation3f(10, 2, 3));
-	//Eigen::Matrix4f T = transform.matrix();
-
-	/*std::vector<float> T(3, 1);
-	T = { 10.0f, 5.0f, 0.0f };*/
-//    Eigen::Affine3f transform(Eigen::Translation3f(0.1f,0.0f,0.3f));
-       //
+    double transX =0.0;
+    double transY = 0.0;
+    double transZ =0.0;
 	Eigen::Vector3d T;
-	T << 0.1f, 0.0f, 0.0f;
-	Eigen::Matrix3d R;
-	R << 0, 0, 1, 0, 1, 0, -1, 0, 0;
-//    R << 0, 0, 1, 0, 1, 0, 1, 0, 0;
+	T << 0.1f, 0.0f, 0.02f;
+    double sampleRatio = 1.0;
+    double rotateZ = 0.0;
+////    Eigen::Matrix3d R;
+//    R << cos(M_PI/180*rotateY), 0, sin(M_PI/180*rotateY),
+//    0, 1, 0,
+//    -(sin(M_PI/180*rotateY)), 0, cos(M_PI/180*rotateY);
     // Load a mesh in OFF format
-    std::string meshPath = "../3rdparty/libigl/tutorial/shared/bunny2.off";
-	std::string newMesh = "../3rdparty/libigl/tutorial/shared/camelhead.off";
+    std::string meshPath = "../3rdparty/libigl/tutorial/shared/bun000.off";
+	std::string newMesh = "../3rdparty/libigl/tutorial/shared/bun045.off";
+    string mesh3 = "../3rdparty/libigl/tutorial/shared/bunnychin.off";
+    string mesh4 = "../3rdparty/libigl/tutorial/shared/bunnEar.off";
+    string mesh5 = "../3rdparty/libigl/tutorial/shared/bunny.off";
+
     if (argc > 1) {
         meshPath = std::string(argv[1]);
         if (meshPath.find(".off") == std::string::npos) {
@@ -106,6 +112,7 @@ int main(int argc, char *argv[]) {
     } else {
         std::cout << "Usage: iglFrameWork <path-to-off-mesh.off>." << "\n";
     }
+  
 
     // Visualize the mesh in a viewer
     igl::viewer::Viewer viewer;
@@ -121,198 +128,101 @@ int main(int argc, char *argv[]) {
         // Pointcloud vertices, N rows x 3 columns.
         Eigen::MatrixXd V1;
 		Eigen::MatrixXd V2;
-		
+        Eigen::MatrixXd V3;
+        Eigen::MatrixXd V4;
+        Eigen::MatrixXd V5;
         // Face indices, M x 3 integers referring to V.
-        Eigen::MatrixXi F;
-		Eigen::MatrixXi newF;
+        Eigen::MatrixXi F1;
+		Eigen::MatrixXi F2;
+        Eigen::MatrixXi F3;
+        Eigen::MatrixXi F4;
+        Eigen::MatrixXi F5;
         // Read mesh
-        igl::readOFF(meshPath, V1, F);
-   
+        igl::readOFF(meshPath, V1, F1);
+        igl::readOFF(mesh3, V3, F3);
+        igl::readOFF(mesh4, V4, F4);
+        igl::readOFF(mesh5, V5, F5);
+        
 		if (V1.rows() <= 0) {
 			std::cerr << "Could not read mesh at " << meshPath
 				<< "...exiting...\n";
 			return EXIT_FAILURE;
 		} //...if vertices read
+        igl::readOFF(newMesh, V2, F2);
+        if (V1.rows() <= 0) {
+            std::cerr << "Could not read mesh at " << newMesh
+            << "...exiting...\n";
+            return EXIT_FAILURE;
+        } //...if vertices read
+        V2 = (V2+T.replicate(1,V2.rows()).transpose());
+        T << 0.0f, 0.1f, 0.02f;
+        V3 = (V3+T.replicate(1,V3.rows()).transpose());
+        T << -0.1f, 0.1f, -0.02f;
+        V4 = (V4+T.replicate(1,V4.rows()).transpose());
+        T << -0.12f, -0.1f, 0.03f;
+        V5 = (V5+T.replicate(1,V5.rows()).transpose());
+        cloudManager.addCloud(acq::DecoratedCloud(V1,F1));
+       
+        cloudManager.getCloud(0).setNormals(
+                          acq::recalcNormals(
+                                             /* [in]      k-neighbours for flann: */ 10,
+                                             /* [in]             vertices matrix: */ V1,
+                                             /* [in]      max neighbour distance: */ maxNeighbourDist
+                                             )
+                          );
+        acq::NeighboursT neighbours;
+        neighbours=normalAnn::inserNeighbours(V1,10);
+        cloud1N = acq::calculateCloudNormals(V1,neighbours);
+//        cloud1N =  cloudManager.getCloud(0).getNormals();
+        cloudManager.addCloud(acq::DecoratedCloud(V2,F2));
+        cloudManager.addCloud(acq::DecoratedCloud(V1,F1));
+        cloudManager.addCloud(acq::DecoratedCloud(V2,F2));
+        cloudManager.setCloud(acq::DecoratedCloud(V3,F3),4);
+        cloudManager.setCloud(acq::DecoratedCloud(V4,F4),5);
+        cloudManager.setCloud(acq::DecoratedCloud(V5,F5),6);
+        
         //----------------Point Processing-----------//
-        //        Eigen::Matrix3d rotation_matrix = Eigen::Matrix3d::Identity();
-        //// 旋转向量使用 AngleAxis, 它底层不直接是Matrix，但运算可以当作矩阵（因为重载了运算符）
-        //Eigen::AngleAxisd rotation_vector ( M_PI/4, Eigen::Vector3d ( 0,0,1 ) );     //沿 Z 轴旋转 45 度
-        //
-        //rotation_matrix = rotation_vector.toRotationMatrix();
-        //Eigen::Isometry3d T=Eigen::Isometry3d::Identity();                // 虽然称为3d，实质上是4＊4的矩阵
-        //T.rotate ( rotation_vector );                                     // 按照rotation_vector进行旋转
-        //T.pretranslate ( Eigen::Vector3d ( 0.1f,0.0,0.2f ) );                     // 把平移向量设成(1,3,4)
-        //cout << "Transform matrix = \n" << T.matrix() <<endl;
-            
-        float v1XMean =V1.col(0).mean();
-        float v1YMean =V1.col(1).mean();
-        float v1ZMean =V1.col(2).mean();
-        
-        cout<<"oldMean of V1 X col0 is: "<<v1XMean<<endl;
-        cout<<"oldMean of V1 Y col1 is: "<<v1YMean<<endl;
-        cout<<"oldMean of V1 Z col2 is: "<<v1ZMean<<endl;
-		cout << endl;
-        V2 = (V1 + T.replicate<1, 8>().transpose());
-     
-        //V2 = T*V1;
-        float v2XMean =V2.col(0).mean();
-        float v2YMean =V2.col(1).mean();
-        float v2ZMean =V2.col(2).mean();
-        cout<<"oldMean of V2 X col0 is: "<<v2XMean<<endl;
-        cout<<"oldMean of V2 Y col1 is: "<<v2YMean<<endl;
-        cout<<"oldMean of V2 Z col2 is: "<<v2ZMean<<endl;
-		cout << endl;
-		Eigen::Vector3d v1Mean;
-		v1Mean << v1XMean, v1YMean, v1ZMean;
-		Eigen::Vector3d v2Mean;
-		v2Mean << v2XMean, v2YMean, v2ZMean;
-		Eigen::MatrixXd newV1;
-		Eigen::MatrixXd newV2;
-		newV1 = V1 - v1Mean.replicate<1, 8>().transpose();
-		newV2 = V2 - v2Mean.replicate<1, 8>().transpose();
-		
-		cloudManager.addCloud(acq::DecoratedCloud(V1, F));
-		cloudManager.addCloud(acq::DecoratedCloud(V2, F));
-		//Test find neighbour
 
-//ANN TEST
-        annNeighbour * ann = new annNeighbour();
-//        ann->calculateCloudNeighbours(cloudManager.getCloud(0).getVertices(),cloudManager.getCloud(1).getVertices(),1, V1.rows());
-        
-        
-        
-        
-        
-        
-        
-//ANN TEST
-        acq::NeighboursT const Testneighbour =
-        acq::calculateCloudNeighbours(
-                                      /* [in] Source Cloud: */ cloudManager.getCloud(0).getVertices(),
-                                      /* [in] k-neighbours: */ 1,
-                                      /* [in]      maxDist: */ maxNeighbourDist
-                                      );
-        
-        for (int i = 0; i < Testneighbour.size(); i++)
-        {
-            std::set<size_t> neighbours = Testneighbour.at(i);
-            std::set<size_t>::iterator eachN;
-            for (eachN = neighbours.begin(); eachN != neighbours.end(); eachN++) {
-                cout <<"Neighbour of Point: " <<*eachN<<endl;
-            }
-             cout <<"Value of Point: "<<i  <<endl;
-        }
-        //Test find neighbour
-        
-        acq::NeighboursT const SVDneighbours =
-			acq::calculateCloudNeighbours(
-				/* [in] Source Cloud: */ cloudManager.getCloud(0).getVertices(),
-				/* [in] Target Cloud: */ cloudManager.getCloud(1).getVertices(),
-				/* [in] k-neighbours: */ 1,
-				/* [in]      maxDist: */ maxNeighbourDist
-			);
-		cout<<"Neighbours size: "<<SVDneighbours.size()<<endl;
-		Eigen::MatrixXd V3; //neighbour Vs
-		V3.setZero(SVDneighbours.size(),3);
-        Eigen::MatrixXd SVDV2; //neighbour Vs
-        SVDV2.setZero(SVDneighbours.size(),3);
-		for (int i = 0; i < SVDneighbours.size(); i++)
-		{
-			std::set<size_t> neighbours = SVDneighbours.at(i);
-			std::set<size_t>::iterator eachN;
-			for (eachN = neighbours.begin(); eachN != neighbours.end(); eachN++) {
-				cout <<"Neighbour of Point: " <<" "<<V1.row(*eachN) <<endl;
-                cout <<"Value of Point: "<<i <<" "<<V2.row(i) <<endl;
-
-				V3.row(i) = V1.row(*eachN);
-                SVDV2.row(i) = V2.row(i);
-			}
-		}
-
-		cout << "Mean of V1 X col0 is: " << newV1.col(0).mean() << endl;
-		cout << "Mean of V1 Y col1 is: " << newV1.col(1).mean() << endl;
-		cout << "Mean of V1 Z col2 is: " << newV1.col(2).mean() << endl;
-		cout <<endl;
-		float v3XMean = V3.col(0).mean();
-		float v3YMean = V3.col(1).mean();
-		float v3ZMean = V3.col(2).mean();
-		Eigen::Vector3d v3Mean;
-		v3Mean << v3XMean, v3YMean, v3ZMean;
-		cout << "Mean of V3 X col0 is: " << v3XMean << endl;
-		cout << "Mean of V3 Y col1 is: " << v3YMean << endl;
-		cout << "Mean of V3 Z col2 is: " << v3ZMean << endl;
-		cout << endl;
-        
-		float svdv2XMean = SVDV2.col(0).mean();
-		float svdv2YMean = SVDV2.col(1).mean();
-		float svdv2ZMean = SVDV2.col(2).mean();
-		cout << "Mean of V2 X col0 is: " << svdv2XMean << endl;
-		cout << "Mean of V2 Y col1 is: " << svdv2YMean << endl;
-		cout << "Mean of V2 Z col2 is: " << svdv2ZMean << endl;
-		cout << endl;
-		Eigen::Vector3d svdv2Mean;
-		svdv2Mean << svdv2XMean, svdv2YMean, svdv2ZMean;
-
-		Eigen::MatrixXd SVDC;
-		SVDC = ((SVDV2 - svdv2Mean.replicate<1, 8>().transpose()).transpose())*(V3 - v3Mean.replicate<1, 8>().transpose());
-		cout << "The SVDC is"<<endl << SVDC << endl;
-		Eigen::JacobiSVD<Eigen::MatrixXd> svd(SVDC, Eigen::ComputeThinU | Eigen::ComputeThinV);
-		Eigen::MatrixXd SVDU = svd.matrixU();
-		Eigen::MatrixXd SVDV = svd.matrixV();
-		Eigen::MatrixXd SVDR = SVDV*SVDU.transpose();
-		Eigen::MatrixXd SVDT = v3Mean - SVDR*svdv2Mean;
-		cout << "The SVDR is" << endl << SVDR << endl;
-		cout << "The SVDT is" << endl << SVDT << endl;
-		//V2 = (V2 - SVDT.replicate<1, 3485>().transpose())*SVDR;
-
-        //----------------Point Processing-----------//
-		//----------------Show Two Meshes-----------//
-        newF = F;
-		
-//		V2 = (V1 + T.replicate<1, 3485>().transpose())*R;
-		
-        //igl::readOFF(newMesh, newV, newF);
 
 		Eigen::MatrixXd totalV(V1.rows() + V2.rows(), V1.cols());
 		totalV << V1, V2;
-		Eigen::MatrixXi totalF(F.rows() + newF.rows(), F.cols());
-		totalF << F, (newF.array() + V1.rows());
-
+		Eigen::MatrixXi totalF(F1.rows() + F2.rows(), F1.cols());
+        totalF << F1, (F2.array()+V1.rows());
 		//set different colors to two objects
 		Eigen::MatrixXd C(totalF.rows(), 3);
 		C <<
-			Eigen::RowVector3d(0.2, 0.3, 0.8).replicate(F.rows(), 1),
-			Eigen::RowVector3d(1.0, 0.7, 0.2).replicate(newF.rows(), 1);
-
+        Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+        Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1);
         // Store read vertices and faces
-        cloudManager.addCloud(acq::DecoratedCloud(V1, F));
+        cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
 		
         // Show mesh
 		viewer.data.set_mesh(
 			totalV,
             totalF
         );
-		
+        
 		viewer.data.set_colors(C);
-		// Calculate normals on launch
-		cloudManager.getCloud(0).setNormals(
-			acq::recalcNormals(
-				/* [in]      K-neighbours for FLANN: */ kNeighbours,
-				/* [in]             Vertices matrix: */ cloudManager.getCloud(0).getVertices(),
-				/* [in]      max neighbour distance: */ maxNeighbourDist
-			)
-		);
+//		 Calculate normals on launch
+//		cloudManager.getCloud(0).setNormals(
+//			acq::recalcNormals(
+//				/* [in]      K-neighbours for FLANN: */ kNeighbours,
+//				/* [in]             Vertices matrix: */ cloudManager.getCloud(0).getVertices(),
+//				/* [in]      max neighbour distance: */ maxNeighbourDist
+//			)
+//		);
 
+        
+//Process Normals ICP
+        
 		// Update viewer
-		acq::setViewerNormals(
-			viewer,
-			cloudManager.getCloud(0).getVertices(),
-			cloudManager.getCloud(0).getNormals()
-		);
-		
-		
-		
+//		acq::setViewerNormals(
+//			viewer,
+//			cloudManager.getCloud(0).getVertices(),
+//			cloudManager.getCloud(0).getNormals()
+//		);
 
+        
     } //...read mesh
 
 	
@@ -321,298 +231,346 @@ int main(int argc, char *argv[]) {
     viewer.callback_init =
         [
             &cloudManager, &kNeighbours, &maxNeighbourDist,
-            &floatVariable, &boolVariable, &dir
+         &floatVariable, &boolVariable, &dir, &disDiv,&disMean,&cloud1N, &rotateZ,&transX,&transY,&transZ, &sampleRatio
         ] (igl::viewer::Viewer& viewer)
     {
         // Add an additional menu window
         viewer.ngui->addWindow(Eigen::Vector2i(900,10), "Acquisition3D");
+        viewer.ngui->addGroup("Initial Cloud");
+        
+        viewer.ngui->addVariable<double>(
+                                      /* Displayed name: */ "Rotation Z",
+                                      
+                                      /*  Setter lambda: */ [&] (double val) {
 
-        // Add new group
-        viewer.ngui->addGroup("Nearest neighbours (pointcloud, FLANN)");
+                                          rotateZ= val;
+                                      },
+                                      /*  Getter lambda: */ [&]() {
+                                          return rotateZ; // get
+                                      } );
+        viewer.ngui->addVariable<double>(
+                                         /* Displayed name: */ "Translation X",
+                                         
+                                         /*  Setter lambda: */ [&] (double val) {
+                                             
+                                             transX= val;
+                                         },
+                                         /*  Getter lambda: */ [&]() {
+                                             return transX; // get
+                                         } );
+        viewer.ngui->addVariable<double>(
+                                         /* Displayed name: */ "Translation Y",
+                                         
+                                         /*  Setter lambda: */ [&] (double val) {
+                                             
+                                             transY= val;
+                                         },
+                                         /*  Getter lambda: */ [&]() {
+                                             return transY; // get
+                                         } );
+        viewer.ngui->addVariable<double>(
+                                         /* Displayed name: */ "Translation Z",
+                                         
+                                         /*  Setter lambda: */ [&] (double val) {
+                                             
+                                             transZ= val;
+                                         },
+                                         /*  Getter lambda: */ [&]() {
+                                             return transZ; // get
+                                         } );
 
-        // Add k-neighbours variable to GUI
-        viewer.ngui->addVariable<int>(
-            /* Displayed name: */ "k-neighbours",
+        viewer.ngui->addButton("Start Initial",
+                               [&]() {
+                                   Eigen::Matrix3d Rotation;
+                                   Rotation<<Eigen::AngleAxisd(rotateZ*M_PI/180,Eigen::Vector3d(0,0,1)).toRotationMatrix();
+                                   Eigen::Vector3d T;
+                                   T << transX,transY,transZ;
+                                   acq::DecoratedCloud &cloud1 = cloudManager.getCloud(2);
+                                   acq::DecoratedCloud &cloud2 = cloudManager.getCloud(3);
+                                   Eigen::MatrixXi F1 = cloud1.getFaces();
+                                   Eigen::MatrixXi F2 = cloud2.getFaces();
+                                   Eigen:: MatrixXd V1;
+                                   V1 = cloud1.getVertices();
+                                   Eigen:: MatrixXd V2;
+                                   V2 = cloud2.getVertices();
+                                   V2 = (V2+T.replicate(1,V2.rows()).transpose())*Rotation;
+                                   
+                                   cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
+                                   
+                                   Eigen::MatrixXd totalV(V1.rows() + V2.rows(), V1.cols());
+                                   totalV << V1, V2;
+                                   Eigen::MatrixXi totalF(F1.rows() + F2.rows(), F1.cols());
+                                   totalF << F1, (F2.array()+V1.rows());
+                                   //set different colors to two objects
+                                   Eigen::MatrixXd C(totalF.rows(), 3);
+                                   C <<
+                                   Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1);
+                                   
+                                   // Store read vertices and faces
+                                   cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
+                                   
+                                   // Show mesh
+                                   viewer.data.clear();
+                                   viewer.data.set_mesh(
+                                                        totalV,
+                                                        totalF
+                                                        );
+                                   
+                                   viewer.data.set_colors(C);
+                                   
+                                   
+                               }
+         );
 
-            /*  Setter lambda: */ [&] (int val) {
-                // Store reference to current cloud (id 0 for now)
-                acq::DecoratedCloud &cloud = cloudManager.getCloud(0);
+        viewer.ngui->addGroup("New Bee Coursework");
+        viewer.ngui->addVariable<double>(
+                                         /* Displayed name: */ "Sample ratio",
+                                         
+                                         /*  Setter lambda: */ [&] (double val) {
+                                             
+                                             sampleRatio= val;
+                                         },
+                                         /*  Getter lambda: */ [&]() {
+                                             return sampleRatio; // get
+                                         } );
+        viewer.ngui->addVariable<double>(
+                                         /* Displayed name: */ "Distribution Mean",
+                                         
+                                         /*  Setter lambda: */ [&] (double val) {
+                                             
+                                             disMean= val;
+                                         },
+                                         /*  Getter lambda: */ [&]() {
+                                             return disMean; // get
+                                         } );
+        viewer.ngui->addVariable<double>(
+                                         /* Displayed name: */ "Distribution Variation",
+                                         
+                                         /*  Setter lambda: */ [&] (double val) {
+                                             
+                                             disDiv= val;
+                                         },
+                                         /*  Getter lambda: */ [&]() {
+                                             return disDiv; // get
+                                         } );
 
-                // Store new value
-                kNeighbours = val;
+        viewer.ngui->addButton("Add Noisy",
+                               [&]() {
+                                   acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
+                                   acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
+                                   Eigen::MatrixXi F1 = cloud1.getFaces();
+                                   Eigen::MatrixXi F2 = cloud2.getFaces();
+                                   Eigen:: MatrixXd V1;
+                                   V1 = cloud1.getVertices();
+                                   Eigen:: MatrixXd V2;
+                                   V2 = cloud2.getVertices();
+                                  
+                                  
+                                   default_random_engine randomGen;
+                                   normal_distribution<double> dis(disMean,disDiv);
+                                   Eigen::Vector3d noisy;
+                                   for(int i =0;i<V2.rows();i++){
+                                       noisy[0] = dis(randomGen)/1000;
+                                       noisy[1] = dis(randomGen)/1000;
+                                       noisy[2] = dis(randomGen)/1000;
+                                       V2.row(i) += noisy;
+                                       
+                                   }
+                                   
+                                   cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
+                                   
+                                   Eigen::MatrixXd totalV(V1.rows() + V2.rows(), V1.cols());
+                                   totalV << V1, V2;
+                                   Eigen::MatrixXi totalF(F1.rows() + F2.rows(), F1.cols());
+                                   totalF << F1, (F2.array()+V1.rows());
+                                   //set different colors to two objects
+                                   Eigen::MatrixXd C(totalF.rows(), 3);
+                                   C <<
+                                   Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1);
+                                   
+                                   // Store read vertices and faces
+                                   cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
+                                   
+                                   // Show mesh
+                                   viewer.data.clear();
+                                   viewer.data.set_mesh(
+                                                        totalV,
+                                                        totalF
+                                                        );
+                                   
+                                   viewer.data.set_colors(C);
+                                   
+                                   
+                               }
+                               );
 
-                // Recalculate normals for cloud and update viewer
-                cloud.setNormals(
-                    acq::recalcNormals(
-                        /* [in]      K-neighbours for FLANN: */ kNeighbours,
-                        /* [in]             Vertices matrix: */ cloud.getVertices(),
-                        /* [in]      max neighbour distance: */ maxNeighbourDist
-                    )
-                );
+         viewer.ngui->addButton("Point to Point",
+                               [&]() {
+                                   acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
+                                   acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
+                                   Eigen::MatrixXi F1 = cloud1.getFaces();
+                                   Eigen::MatrixXi F2 = cloud2.getFaces();
+                                   Eigen:: MatrixXd V1;
+                                   V1 = cloud1.getVertices();
+                                   Eigen:: MatrixXd V2;
+                                   V2 = cloud2.getVertices();
+                                   double timeBegin = std::clock();
+                                   
+                                   //ANN TEST
+                                   int minRows = min(V1.rows(),V2.rows())*sampleRatio;
+                                   Eigen::MatrixXd V3;
+                                   Eigen::MatrixXd newV2;
+                                   int annKNeighbours = 1;
+                                   std::tie(V3,newV2)= ann::annNeighbour(V1,V2,annKNeighbours,minRows);
+                                   //ANN TEST
+                                   V2 = ann::annSVD(V3,newV2,V2);
+                                   
+                                   double timeLast = (std::clock() - timeBegin)*1.0/CLOCKS_PER_SEC;
+                                   std::cout << "*************************************" << endl;
+                                   std::cout << "Processing Time: " << timeLast << " s" << endl;
+                                   std::cout << "*************************************" << endl;
+                                   
+                                   cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
+                                   
+                                   Eigen::MatrixXd totalV(V1.rows() + V2.rows(), V1.cols());
+                                   totalV << V1, V2;
+                                   Eigen::MatrixXi totalF(F1.rows() + F2.rows(), F1.cols());
+                                   totalF << F1, (F2.array()+V1.rows());
+                                   //set different colors to two objects
+                                   Eigen::MatrixXd C(totalF.rows(), 3);
+                                   C <<
+                                   Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1);
+                                   
+                                   // Store read vertices and faces
+                                   cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
+                                   
+                                   // Show mesh
+                                   viewer.data.clear();
+                                   viewer.data.set_mesh(
+                                                        totalV,
+                                                        totalF
+                                                        );
+                                   
+                                   viewer.data.set_colors(C);
+                                   
+                                   
+                               }
+                               );
+        viewer.ngui->addButton("Point to Plane (Normals)",
+                               [&]() {
+                                   acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
+                                   acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
+                                   Eigen::MatrixXi F1 = cloud1.getFaces();
+                                   Eigen::MatrixXi F2 = cloud2.getFaces();
+                                   Eigen:: MatrixXd V1;
+                                   V1 = cloud1.getVertices();
+                                   Eigen:: MatrixXd V2;
+                                   V2 = cloud2.getVertices();
+                                   double timeBegin = std::clock();
+                                   int minRows = min(V1.rows(),V2.rows())*sampleRatio;
 
-                // Update viewer
-                acq::setViewerNormals(
-                    /* [in, out] Viewer to update: */ viewer,
-                    /* [in]            Pointcloud: */ cloud.getVertices(),
-                    /* [in] Normals of Pointcloud: */ cloud.getNormals()
-                );
-            }, //...setter lambda
+//                                   V2 = normalAnn::calRT(V1,V2,normals,minRows);
+                                   V2 = normalAnn::calRT(V1,V2,cloud1N,minRows);
+                                   
+                                   double timeLast = (std::clock() - timeBegin)*1.0/CLOCKS_PER_SEC;
+                                   std::cout << "*************************************" << endl;
+                                   std::cout << "Processing Time: " << timeLast << " s" << endl;
+                                   std::cout << "*************************************" << endl;
+                                   
+                                   cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
+                                   
+                                   Eigen::MatrixXd totalV(V1.rows() + V2.rows(), V1.cols());
+                                   totalV << V1, V2;
+                                   Eigen::MatrixXi totalF(F1.rows() + F2.rows(), F1.cols());
+                                   totalF << F1, (F2.array()+V1.rows());
+                                   //set different colors to two objects
+                                   Eigen::MatrixXd C(totalF.rows(), 3);
+                                   C <<
+                                   Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1);
+                                   
+                                   // Store read vertices and faces
+                                   cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
+                                   
+                                   // Show mesh
+                                   viewer.data.clear();
+                                   viewer.data.set_mesh(
+                                                        totalV,
+                                                        totalF
+                                                        );
+                                   
+                                   viewer.data.set_colors(C);
+                                   
+                                   
+                               }
+                               );
+        viewer.ngui->addButton("Multiple Align",
+                               [&]() {
+                                   acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
+                                   acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
+                                   acq::DecoratedCloud &cloud3 = cloudManager.getCloud(4);
+                                   acq::DecoratedCloud &cloud4 = cloudManager.getCloud(5);
+                                   acq::DecoratedCloud &cloud5 = cloudManager.getCloud(6);
 
-            /*  Getter lambda: */ [&]() {
-                return kNeighbours; // get
-            } //...getter lambda
-        ); //...addVariable(kNeighbours)
-
-        // Add maxNeighbourDistance variable to GUI
-        viewer.ngui->addVariable<float>(
-            /* Displayed name: */ "maxNeighDist",
-
-            /*  Setter lambda: */ [&] (float val) {
-                // Store reference to current cloud (id 0 for now)
-                acq::DecoratedCloud &cloud = cloudManager.getCloud(0);
-
-                // Store new value
-                maxNeighbourDist = val;
-
-                // Recalculate normals for cloud and update viewer
-                cloud.setNormals(
-                    acq::recalcNormals(
-                        /* [in]      K-neighbours for FLANN: */ kNeighbours,
-                        /* [in]             Vertices matrix: */ cloud.getVertices(),
-                        /* [in]      max neighbour distance: */ maxNeighbourDist
-                    )
-                );
-
-                // Update viewer
-                acq::setViewerNormals(
-                    /* [in, out] Viewer to update: */ viewer,
-                    /* [in]            Pointcloud: */ cloud.getVertices(),
-                    /* [in] Normals of Pointcloud: */ cloud.getNormals()
-                );
-            }, //...setter lambda
-
-            /*  Getter lambda: */ [&]() {
-                return maxNeighbourDist; // get
-            } //...getter lambda
-        ); //...addVariable(kNeighbours)
-
-        // Add a button for estimating normals using FLANN as neighbourhood
-        // same, as changing kNeighbours
-        viewer.ngui->addButton(
-            /* displayed label: */ "Estimate normals (FLANN)",
-
-            /* lambda to call: */ [&]() {
-                // store reference to current cloud (id 0 for now)
-                acq::DecoratedCloud &cloud = cloudManager.getCloud(0);
-
-                // calculate normals for cloud and update viewer
-                cloud.setNormals(
-                    acq::recalcNormals(
-                        /* [in]      k-neighbours for flann: */ kNeighbours,
-                        /* [in]             vertices matrix: */ cloud.getVertices(),
-                        /* [in]      max neighbour distance: */ maxNeighbourDist
-                    )
-                );
-
-                // update viewer
-                acq::setViewerNormals(
-                    /* [in, out] viewer to update: */ viewer,
-                    /* [in]            pointcloud: */ cloud.getVertices(),
-                    /* [in] normals of pointcloud: */ cloud.getNormals()
-                );
-            } //...button push lambda
-        ); //...estimate normals using FLANN
-
-        // Add a button for orienting normals using FLANN
-        viewer.ngui->addButton(
-            /* Displayed label: */ "Orient normals (FLANN)",
-
-            /* Lambda to call: */ [&]() {
-                // Store reference to current cloud (id 0 for now)
-                acq::DecoratedCloud &cloud = cloudManager.getCloud(0);
-
-                // Check, if normals already exist
-                if (!cloud.hasNormals())
-                    cloud.setNormals(
-                        acq::recalcNormals(
-                            /* [in]      K-neighbours for FLANN: */ kNeighbours,
-                            /* [in]             Vertices matrix: */ cloud.getVertices(),
-                            /* [in]      max neighbour distance: */ maxNeighbourDist
-                        )
-                    );
-
-                // Estimate neighbours using FLANN
-                acq::NeighboursT const neighbours =
-                    acq::calculateCloudNeighbours(
-                        /* [in]        Cloud: */ cloud.getVertices(),
-                        /* [in] k-neighbours: */ kNeighbours,
-                        /* [in]      maxDist: */ maxNeighbourDist
-                    );
-
-                // Orient normals in place using established neighbourhood
-                int nFlips =
-                    acq::orientCloudNormals(
-                        /* [in    ] Lists of neighbours: */ neighbours,
-                        /* [in,out]   Normals to change: */ cloud.getNormals()
-                    );
-                std::cout << "nFlips: " << nFlips << "/" << cloud.getNormals().size() << "\n";
-
-                // Update viewer
-                acq::setViewerNormals(
-                    /* [in, out] Viewer to update: */ viewer,
-                    /* [in]            Pointcloud: */ cloud.getVertices(),
-                    /* [in] Normals of Pointcloud: */ cloud.getNormals()
-                );
-            } //...lambda to call on buttonclick
-        ); //...addButton(orientFLANN)
-
-
-        // Add new group
-        viewer.ngui->addGroup("Connectivity from faces ");
-
-        // Add a button for estimating normals using faces as neighbourhood
-        viewer.ngui->addButton(
-            /* Displayed label: */ "Estimate normals (from faces)",
-
-            /* Lambda to call: */ [&]() {
-                // Store reference to current cloud (id 0 for now)
-                acq::DecoratedCloud &cloud = cloudManager.getCloud(0);
-
-                // Check, if normals already exist
-                if (!cloud.hasNormals())
-                    cloud.setNormals(
-                        acq::recalcNormals(
-                            /* [in]      K-neighbours for FLANN: */ kNeighbours,
-                            /* [in]             Vertices matrix: */ cloud.getVertices(),
-                            /* [in]      max neighbour distance: */ maxNeighbourDist
-                        )
-                    );
-
-                // Estimate neighbours using FLANN
-                acq::NeighboursT const neighbours =
-                    acq::calculateCloudNeighboursFromFaces(
-                        /* [in] Faces: */ cloud.getFaces()
-                    );
-
-                // Estimate normals for points in cloud vertices
-                cloud.setNormals(
-                    acq::calculateCloudNormals(
-                        /* [in]               Cloud: */ cloud.getVertices(),
-                        /* [in] Lists of neighbours: */ neighbours
-                    )
-                );
-
-                // Update viewer
-                acq::setViewerNormals(
-                    /* [in, out] Viewer to update: */ viewer,
-                    /* [in]            Pointcloud: */ cloud.getVertices(),
-                    /* [in] Normals of Pointcloud: */ cloud.getNormals()
-                );
-            } //...button push lambda
-        ); //...estimate normals from faces
-
-        // Add a button for orienting normals using face information
-        viewer.ngui->addButton(
-            /* Displayed label: */ "Orient normals (from faces)",
-
-            /* Lambda to call: */ [&]() {
-                // Store reference to current cloud (id 0 for now)
-                acq::DecoratedCloud &cloud = cloudManager.getCloud(0);
-
-                // Check, if normals already exist
-                if (!cloud.hasNormals())
-                    cloud.setNormals(
-                        acq::recalcNormals(
-                            /* [in]      K-neighbours for FLANN: */ kNeighbours,
-                            /* [in]             Vertices matrix: */ cloud.getVertices(),
-                            /* [in]      max neighbour distance: */ maxNeighbourDist
-                        )
-                    );
-
-                // Orient normals in place using established neighbourhood
-                int nFlips =
-                    acq::orientCloudNormalsFromFaces(
-                        /* [in    ] Lists of neighbours: */ cloud.getFaces(),
-                        /* [in,out]   Normals to change: */ cloud.getNormals()
-                    );
-                std::cout << "nFlips: " << nFlips << "/" << cloud.getNormals().size() << "\n";
-
-                // Update viewer
-                acq::setViewerNormals(
-                    /* [in, out] Viewer to update: */ viewer,
-                    /* [in]            Pointcloud: */ cloud.getVertices(),
-                    /* [in] Normals of Pointcloud: */ cloud.getNormals()
-                );
-            } //...lambda to call on buttonclick
-        ); //...addButton(orientFromFaces)
-
-
-        // Add new group
-        viewer.ngui->addGroup("Util");
-
-        // Add a button for flipping normals
-        viewer.ngui->addButton(
-            /* Displayed label: */ "Flip normals",
-            /*  Lambda to call: */ [&](){
-                // Store reference to current cloud (id 0 for now)
-                acq::DecoratedCloud &cloud = cloudManager.getCloud(0);
-
-                // Flip normals
-                cloud.getNormals() *= -1.f;
-
-                // Update viewer
-                acq::setViewerNormals(
-                    /* [in, out] Viewer to update: */ viewer,
-                    /* [in]            Pointcloud: */ cloud.getVertices(),
-                    /* [in] Normals of Pointcloud: */ cloud.getNormals()
-                );
-            } //...lambda to call on buttonclick
-        );
-
-        // Add a button for setting estimated normals for shading
-        viewer.ngui->addButton(
-            /* Displayed label: */ "Set shading normals",
-            /*  Lambda to call: */ [&](){
-
-                // Store reference to current cloud (id 0 for now)
-                acq::DecoratedCloud &cloud = cloudManager.getCloud(0);
-
-                // Set normals to be used by viewer
-                viewer.data.set_normals(cloud.getNormals());
-
-            } //...lambda to call on buttonclick
-        );
-
-        // ------------------------
-        // Dummy libIGL/nanoGUI API demo stuff:
-        // ------------------------
-
-        // Add new group
-        viewer.ngui->addGroup("Dummy GUI demo");
-
-        // Expose variable directly ...
-        viewer.ngui->addVariable("float", floatVariable);
-
-        // ... or using a custom callback
-        viewer.ngui->addVariable<bool>(
-            "bool",
-            [&](bool val) {
-                boolVariable = val; // set
-            },
-            [&]() {
-                return boolVariable; // get
-            }
-        );
-
-        // Expose an enumaration type
-        viewer.ngui->addVariable<Orientation>("Direction",dir)->setItems(
-            {"Up","Down","Left","Right"}
-        );
-
-        // Add a button
-        viewer.ngui->addButton("Print Hello",[]() {
-            std::cout << "Hello\n";
-        });
+                                   Eigen::MatrixXi F1 = cloud1.getFaces();
+                                   Eigen::MatrixXi F2 = cloud2.getFaces();
+                                   Eigen::MatrixXi F3 = cloud3.getFaces();
+                                   Eigen::MatrixXi F4 = cloud4.getFaces();
+                                   Eigen::MatrixXi F5 = cloud5.getFaces();
+                                   
+                                   Eigen:: MatrixXd V1;
+                                   V1 = cloud1.getVertices();
+                                   Eigen:: MatrixXd V2;
+                                   V2 = cloud2.getVertices();
+                                   Eigen:: MatrixXd V3;
+                                   V3 = cloud3.getVertices();
+                                   Eigen:: MatrixXd V4;
+                                   V4 = cloud4.getVertices();
+                                   Eigen:: MatrixXd V5;
+                                   V5 = cloud5.getVertices();
+                                   
+                                   
+                                   cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V3,F3),4);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V4,F4),5);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V5,F5),6);
+                                   
+                                   Eigen::MatrixXd totalV(V1.rows() + V2.rows() + V3.rows()+V4.rows()+V5.rows(), V1.cols());
+                                   totalV << V1, V2,V3,V4,V5;
+                                   Eigen::MatrixXi totalF(F1.rows() + F2.rows()+F3.rows()+F4.rows()+F5.rows(), F1.cols());
+                                   totalF << F1, (F2.array()+V1.rows()), (F3.array()+V2.rows()+V1.rows()), (F4.array()+V3.rows()+V2.rows()+V1.rows()), (F5.array()+V4.rows()+V3.rows()+V2.rows()+V1.rows());
+                                   //set different colors to two objects
+                                   Eigen::MatrixXd C(totalF.rows(), 3);
+                                   C <<
+                                   Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1),
+                                   Eigen::RowVector3d(0.3, 1.0, 0.0).replicate(F3.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 0.0, 0.2).replicate(F4.rows(), 1),
+                                   Eigen::RowVector3d(0.1, 0.4, 0.6).replicate(F5.rows(), 1);
+                                   
+                                   // Store read vertices and faces
+//                                   cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
+                                   
+                                   // Show mesh
+                                   viewer.data.clear();
+                                   viewer.data.set_mesh(
+                                                        totalV,
+                                                        totalF
+                                                        );
+                                   
+                                   viewer.data.set_colors(C);
+                                   
+                                   
+                               }
+                               );
 
         // Generate menu
         viewer.screen->performLayout();
