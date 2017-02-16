@@ -13,6 +13,7 @@
 #include "annWithNormal.hpp"
 #include <random>
 #include <iterator>
+#include "multipleAlign.hpp"
 //#include "annNeighbour.h"
 using namespace std;
 namespace acq {
@@ -99,9 +100,9 @@ int main(int argc, char *argv[]) {
     // Load a mesh in OFF format
     std::string meshPath = "../3rdparty/libigl/tutorial/shared/bun000.off";
 	std::string newMesh = "../3rdparty/libigl/tutorial/shared/bun045.off";
-    string mesh3 = "../3rdparty/libigl/tutorial/shared/bunnychin.off";
-    string mesh4 = "../3rdparty/libigl/tutorial/shared/bunnEar.off";
-    string mesh5 = "../3rdparty/libigl/tutorial/shared/bunny.off";
+    string mesh3 = "../3rdparty/libigl/tutorial/shared/bun090.off";
+    string mesh4 = "../3rdparty/libigl/tutorial/shared/bun270.off";
+    string mesh5 = "../3rdparty/libigl/tutorial/shared/bun315.off";
 
     if (argc > 1) {
         meshPath = std::string(argv[1]);
@@ -154,7 +155,7 @@ int main(int argc, char *argv[]) {
             << "...exiting...\n";
             return EXIT_FAILURE;
         } //...if vertices read
-        V2 = (V2+T.replicate(1,V2.rows()).transpose());
+//        V2 = (V2+T.replicate(1,V2.rows()).transpose());
         T << 0.0f, 0.1f, 0.02f;
         V3 = (V3+T.replicate(1,V3.rows()).transpose());
         T << -0.1f, 0.1f, -0.02f;
@@ -164,16 +165,18 @@ int main(int argc, char *argv[]) {
         cloudManager.addCloud(acq::DecoratedCloud(V1,F1));
        
         cloudManager.getCloud(0).setNormals(
-                          acq::recalcNormals(
-                                             /* [in]      k-neighbours for flann: */ 10,
-                                             /* [in]             vertices matrix: */ V1,
-                                             /* [in]      max neighbour distance: */ maxNeighbourDist
-                                             )
-                          );
-        acq::NeighboursT neighbours;
-        neighbours=normalAnn::inserNeighbours(V1,10);
-        cloud1N = acq::calculateCloudNormals(V1,neighbours);
-//        cloud1N =  cloudManager.getCloud(0).getNormals();
+                                            acq::recalcNormals(
+                                                               /* [in]      k-neighbours for flann: */ 10,
+                                                               /* [in]             vertices matrix: */ V1,
+                                                               /* [in]      max neighbour distance: */ maxNeighbourDist
+                                                               )
+                                            );
+//        acq::NeighboursT neighbours;
+//        neighbours=normalAnn::inserNeighbours(V1,10);
+//        cloud1N = acq::calculateCloudNormals(V1,neighbours);
+        
+        cloud1N =  cloudManager.getCloud(0).getNormals();
+        
         cloudManager.addCloud(acq::DecoratedCloud(V2,F2));
         cloudManager.addCloud(acq::DecoratedCloud(V1,F1));
         cloudManager.addCloud(acq::DecoratedCloud(V2,F2));
@@ -473,10 +476,13 @@ int main(int argc, char *argv[]) {
                                    Eigen:: MatrixXd V2;
                                    V2 = cloud2.getVertices();
                                    double timeBegin = std::clock();
-                                   int minRows = min(V1.rows(),V2.rows())*sampleRatio;
-
-//                                   V2 = normalAnn::calRT(V1,V2,normals,minRows);
-                                   V2 = normalAnn::calRT(V1,V2,cloud1N,minRows);
+                                   
+                                       int minRows = min(V1.rows(),V2.rows())*sampleRatio;
+                                       
+                                       //                                   V2 = normalAnn::calRT(V1,V2,normals,minRows);
+                                       V2 = normalAnn::calRT(V1,V2,cloud1N,minRows);
+    
+                                   
                                    
                                    double timeLast = (std::clock() - timeBegin)*1.0/CLOCKS_PER_SEC;
                                    std::cout << "*************************************" << endl;
@@ -511,7 +517,69 @@ int main(int argc, char *argv[]) {
                                    
                                }
                                );
-        viewer.ngui->addButton("Multiple Align",
+        viewer.ngui->addGroup("Multiple Align");
+        viewer.ngui->addButton("Multiple Align Initial",
+                               [&]() {
+                                   acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
+                                   acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
+                                   acq::DecoratedCloud &cloud3 = cloudManager.getCloud(4);
+                                   acq::DecoratedCloud &cloud4 = cloudManager.getCloud(5);
+                                   acq::DecoratedCloud &cloud5 = cloudManager.getCloud(6);
+                                   
+                                   Eigen::MatrixXi F1 = cloud1.getFaces();
+                                   Eigen::MatrixXi F2 = cloud2.getFaces();
+                                   Eigen::MatrixXi F3 = cloud3.getFaces();
+                                   Eigen::MatrixXi F4 = cloud4.getFaces();
+                                   Eigen::MatrixXi F5 = cloud5.getFaces();
+                                   
+                                   Eigen:: MatrixXd V1;
+                                   V1 = cloud1.getVertices();
+                                   Eigen:: MatrixXd V2;
+                                   V2 = cloud2.getVertices();
+                                   Eigen:: MatrixXd V3;
+                                   V3 = cloud3.getVertices();
+                                   Eigen:: MatrixXd V4;
+                                   V4 = cloud4.getVertices();
+                                   Eigen:: MatrixXd V5;
+                                   V5 = cloud5.getVertices();
+                                   
+                                
+                                   
+                                   cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V3,F3),4);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V4,F4),5);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V5,F5),6);
+                                   
+                                   Eigen::MatrixXd totalV(V1.rows() + V2.rows() + V3.rows()+V4.rows()+V5.rows(), V1.cols());
+                                   totalV << V1, V2,V3,V4,V5;
+                                   Eigen::MatrixXi totalF(F1.rows() + F2.rows()+F3.rows()+F4.rows()+F5.rows(), F1.cols());
+                                   totalF << F1, (F2.array()+V1.rows()), (F3.array()+V2.rows()+V1.rows()), (F4.array()+V3.rows()+V2.rows()+V1.rows()), (F5.array()+V4.rows()+V3.rows()+V2.rows()+V1.rows());
+                                   //set different colors to two objects
+                                   Eigen::MatrixXd C(totalF.rows(), 3);
+                                   C <<
+                                   Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1),
+                                   Eigen::RowVector3d(0.3, 1.0, 0.0).replicate(F3.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 0.0, 0.2).replicate(F4.rows(), 1),
+                                   Eigen::RowVector3d(0.1, 0.4, 0.6).replicate(F5.rows(), 1);
+                                   
+                                   // Store read vertices and faces
+                                   //                                   cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
+                                   
+                                   // Show mesh
+                                   viewer.data.clear();
+                                   viewer.data.set_mesh(
+                                                        totalV,
+                                                        totalF
+                                                        );
+                                   
+                                   viewer.data.set_colors(C);
+                                   
+                               }
+                               );
+
+        viewer.ngui->addButton("Multiple Align Step 1",
                                [&]() {
                                    acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
                                    acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
@@ -536,7 +604,12 @@ int main(int argc, char *argv[]) {
                                    Eigen:: MatrixXd V5;
                                    V5 = cloud5.getVertices();
                                    
-                                   
+                                   V1 = mul::deMean(V1);
+                                   V2 = mul::deMean(V2);
+                                   V3 = mul::deMean(V3);
+                                   V4 = mul::deMean(V4);
+                                   V5 = mul::deMean(V5);
+
                                    cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
                                    cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
                                    cloudManager.setCloud(acq::DecoratedCloud(V3,F3),4);
@@ -568,10 +641,97 @@ int main(int argc, char *argv[]) {
                                    
                                    viewer.data.set_colors(C);
                                    
+                               }
+                            );
+        viewer.ngui->addButton("Multiple Align Step 2",
+                               [&]() {
+                                   acq::DecoratedCloud &cloud1 = cloudManager.getCloud(0);
+                                   acq::DecoratedCloud &cloud2 = cloudManager.getCloud(1);
+                                   acq::DecoratedCloud &cloud3 = cloudManager.getCloud(4);
+                                   acq::DecoratedCloud &cloud4 = cloudManager.getCloud(5);
+                                   acq::DecoratedCloud &cloud5 = cloudManager.getCloud(6);
+                                   
+                                   Eigen::MatrixXi F1 = cloud1.getFaces();
+                                   Eigen::MatrixXi F2 = cloud2.getFaces();
+                                   Eigen::MatrixXi F3 = cloud3.getFaces();
+                                   Eigen::MatrixXi F4 = cloud4.getFaces();
+                                   Eigen::MatrixXi F5 = cloud5.getFaces();
+                                   
+                                   Eigen:: MatrixXd V1;
+                                   V1 = cloud1.getVertices();
+                                   Eigen:: MatrixXd V2;
+                                   V2 = cloud2.getVertices();
+                                   Eigen:: MatrixXd V3;
+                                   V3 = cloud3.getVertices();
+                                   Eigen:: MatrixXd V4;
+                                   V4 = cloud4.getVertices();
+                                   Eigen:: MatrixXd V5;
+                                   V5 = cloud5.getVertices();
+                                   
+                                   Eigen::MatrixXd VV;
+                                   Eigen::MatrixXd annV1;
+                                   Eigen::MatrixXd annV2;
+                                   int minRows;
+                                   for (int i=0;i<5;i++){
+                                       minRows = min(V4.rows(),V5.rows())*sampleRatio;
+                                       tie(annV1,annV2)= ann::annNeighbour(V5,V4,1,minRows);
+                                       //ANN TEST
+                                       V4 = ann::annSVD(annV1,annV2,V4);
+                                       
+                                       minRows = min(V2.rows(),V3.rows())*sampleRatio;
+                                       tie(annV1,annV2)= ann::annNeighbour(V2,V3,1,minRows);
+                                       //ANN TEST
+                                       V3 = ann::annSVD(annV1,annV2,V3);
+                                       
+                                       minRows = min(V1.rows(),V5.rows())*sampleRatio;
+                                       tie(annV1,annV2)= ann::annNeighbour(V1,V5,1,minRows);
+                                       //ANN TEST
+                                       V5 = ann::annSVD(annV1,annV2,V5);
+                                       
+                                       minRows = min(V1.rows(),V2.rows())*sampleRatio;
+                                       tie(annV1,annV2)= ann::annNeighbour(V1,V2,1,minRows);
+                                       //ANN TEST
+                                       V2 = ann::annSVD(annV1,annV2,V2);
+                                       
+                                    
+                                       
+                                       
+
+                                   }
+                                   cloudManager.setCloud(acq::DecoratedCloud(V1,F1),0);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V2,F2),1);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V3,F3),4);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V4,F4),5);
+                                   cloudManager.setCloud(acq::DecoratedCloud(V5,F5),6);
+                                   
+                                   Eigen::MatrixXd totalV(V1.rows() + V2.rows() + V3.rows()+V4.rows()+V5.rows(), V1.cols());
+                                   totalV << V1, V2,V3,V4,V5;
+                                   Eigen::MatrixXi totalF(F1.rows() + F2.rows()+F3.rows()+F4.rows()+F5.rows(), F1.cols());
+                                   totalF << F1, (F2.array()+V1.rows()), (F3.array()+V2.rows()+V1.rows()), (F4.array()+V3.rows()+V2.rows()+V1.rows()), (F5.array()+V4.rows()+V3.rows()+V2.rows()+V1.rows());
+                                   //set different colors to two objects
+                                   Eigen::MatrixXd C(totalF.rows(), 3);
+                                   C <<
+                                   Eigen::RowVector3d(0.0, 0.3, 1.0).replicate(F1.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 1.0, 0.0).replicate(F2.rows(), 1),
+                                   Eigen::RowVector3d(0.3, 1.0, 0.0).replicate(F3.rows(), 1),
+                                   Eigen::RowVector3d(1.0, 0.0, 0.2).replicate(F4.rows(), 1),
+                                   Eigen::RowVector3d(0.1, 0.4, 0.6).replicate(F5.rows(), 1);
+                                   
+                                   // Store read vertices and faces
+                                   //                                   cloudManager.addCloud(acq::DecoratedCloud(totalV, totalF));
+                                   
+                                   // Show mesh
+                                   viewer.data.clear();
+                                   viewer.data.set_mesh(
+                                                        totalV,
+                                                        totalF
+                                                        );
+                                   
+                                   viewer.data.set_colors(C);
                                    
                                }
                                );
-
+       
         // Generate menu
         viewer.screen->performLayout();
 

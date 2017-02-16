@@ -67,10 +67,7 @@ tuple<Eigen::MatrixXd, Eigen::MatrixXd> ann::annNeighbour(Eigen::MatrixXd V1, Ei
             newV2(i,d) = queryPt[d];
         }
     }
-    delete [] neighbourInd;
-    delete [] neighbourDis;
-    delete kdTree;
-    annClose();
+    
     return std::make_tuple(V3, newV2);
 }
 
